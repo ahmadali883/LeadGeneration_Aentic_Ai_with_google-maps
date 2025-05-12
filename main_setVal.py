@@ -311,10 +311,14 @@ async def scrape_business(search_term, total):
             await browser.close()
             return BusinessList()
 
-
 async def get_agent_plan(user_input: str):
-    """Processes user input using the LLM to determine intent and extract parameters."""
+    """
+    Processes user input using the LLM to determine intent and extract parameters.
+    Handles both function calls and text responses safely.
+    """
     planned_calls = []
+    llm_text_output = ""  # To store any textual response from the LLM
+
     try:
         chat = model.start_chat()
         prompt = f"""Analyze the following user request for lead generation. Determine the required actions (search Google Maps, send WhatsApp message, or both). Extract all necessary parameters for the corresponding functions.
@@ -325,26 +329,49 @@ async def get_agent_plan(user_input: str):
         """
         response = chat.send_message(prompt)
 
+        # Iterate through the parts of the response candidate
         if response.candidates and response.candidates[0].content.parts:
             for part in response.candidates[0].content.parts:
+                # --- Check for Function Call FIRST ---
                 if part.function_call:
                     call = part.function_call
                     function_name = call.name
-                    args = {key: value for key, value in call.args.items()}
+                    # Ensure args is always a dict, even if empty
+                    args = {key: value for key, value in call.args.items()} if hasattr(call, 'args') else {}
 
+                    # Apply default values if necessary based on function name
                     if function_name == "search_Maps" and "num_results" not in args:
-                        args["num_results"] = 20
+                        args["num_results"] = 20  # Default search results
 
                     planned_calls.append({
                         "function_name": function_name,
                         "args": args
                     })
+                # --- If not a function call, check for text ---
+                elif hasattr(part, 'text'):
+                    llm_text_output += part.text + "\n" # Accumulate text parts
 
-        return planned_calls, response.text
+        # --- Fallback: If no parts were processed, try response.text (might error) ---
+        if not planned_calls and not llm_text_output:
+            try:
+                # This might raise an error if the response *only* contained a function call
+                # but somehow wasn't processed above.
+                llm_text_output = response.text
+            except ValueError as ve:
+                # Handle the specific error if .text is accessed on a function call response
+                llm_text_output = f"LLM response contained a function call but no text. ({ve})"
+            except Exception as text_exc:
+                 llm_text_output = f"Could not extract text response: {text_exc}"
 
     except Exception as e:
-        st.error(f"An error occurred during LLM interaction: {e}")
-        return [], str(e)
+        # Format a more informative error message for the top-level exception
+        error_message = f"An error occurred during LLM interaction: {type(e).__name__} - {str(e)}"
+        st.error(error_message)
+        # Return the error message as the text response part of the tuple
+        return [], error_message
+
+    # Return the extracted plan and any text output (strip extra whitespace)
+    return planned_calls, llm_text_output.strip()
 
 async def main():
     st.title("AI-Powered Lead Generation Assistant")
@@ -369,53 +396,106 @@ async def main():
         placeholder="e.g., Find cafes in Islamabad and send them a promotional message"
     )
 
+
     if st.button("Process Request"):
         if not user_input:
             st.error("Please enter your request")
         else:
             with st.spinner("Analyzing your request..."):
                 planned_calls, llm_response = await get_agent_plan(user_input)
-                
+
                 if planned_calls:
                     st.success("Request analyzed successfully!")
-                    st.json(planned_calls)
-                    
+                    st.json(planned_calls) # Show the plan
+
+                    # --- Store results temporarily if needed for later steps ---
+                    search_results_list = None
+
                     # Process each planned call
                     for call in planned_calls:
                         if call["function_name"] == "search_Maps":
                             with st.spinner("Searching Google Maps..."):
+                                # --- Get and VALIDATE num_results ---
+                                num_results_arg = call["args"].get("num_results", 20) # Default to 20
+                                try:
+                                    # Convert to integer
+                                    num_results_int = int(num_results_arg)
+                                    if num_results_int <= 0: # Add check for non-positive
+                                        st.warning(f"Number of results must be positive ('{num_results_arg}' received). Defaulting to 20.")
+                                        num_results_int = 5
+                                except (ValueError, TypeError):
+                                    st.warning(f"Invalid value received for number of results ('{num_results_arg}'). Defaulting to 20.")
+                                    num_results_int = 20
+                                # --- End Validation ---
+
+                                # Pass the validated integer to the scraper
                                 business_list = await scrape_business(
                                     call["args"]["query"],
-                                    call["args"].get("num_results", 20)
+                                    num_results_int # Use the integer value
                                 )
-                                
-                                if business_list.business_list:
+                                search_results_list = business_list # Store for potential later use
+
+                                if business_list and business_list.business_list: # Check if list is not None and not empty
                                     st.success(f"Found {len(business_list.business_list)} results!")
                                     st.dataframe(business_list.dataframe())
-                                    
+
                                     # Save results
                                     current_datetime = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                                    search_for_filename = call["args"]["query"].replace(' ', '_')
+                                    search_for_filename = call["args"]["query"].replace(' ', '_').replace('/','_') # Basic sanitization
                                     excel_filename = f"({len(business_list.business_list)}_Rows)__{current_datetime}__({search_for_filename})"
-                                    
+
                                     excel_file_path = business_list.save_to_excel(excel_filename)
                                     if excel_file_path:
-                                        st.download_button(
-                                            label="Download Results",
-                                            data=open(excel_file_path, 'rb').read(),
-                                            file_name=f"{excel_filename}.xlsx",
-                                            mime="application/octet-stream"
-                                        )
+                                        try:
+                                            with open(excel_file_path, 'rb') as fp:
+                                                st.download_button(
+                                                    label="Download Results (Excel)",
+                                                    data=fp,
+                                                    file_name=f"{excel_filename}.xlsx",
+                                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" # Correct MIME type
+                                                )
+                                        except FileNotFoundError:
+                                             st.error(f"Could not read file for download: {excel_file_path}")
+                                    else:
+                                         st.error("Failed to save results to Excel.")
+                                else:
+                                     st.warning("No results found or scraping failed.")
+
+
                         elif call["function_name"] == "prepare_whatsapp_message":
-                            st.info("WhatsApp Message Prepared:")
-                            st.write(f"Message: {call['args']['message']}")
-                            if "k" in call["args"]:
-                                st.write(f"Number of recipients: {call['args']['k']}")
-                            if "target_numbers" in call["args"]:
-                                st.write("Target numbers:", call["args"]["target_numbers"])
-                else:
+                            st.info("WhatsApp Message Action:")
+                            message_content = call['args'].get('message', '*No message content provided*')
+                            k_value = call['args'].get('k')
+                            target_numbers = call['args'].get('target_numbers')
+
+                            st.write(f"**Message:** {message_content}")
+
+                            if k_value is not None:
+                                try:
+                                     k_int = int(k_value)
+                                     st.write(f"**Number of recipients (k):** {k_int}")
+                                     # TODO: Implement logic to get numbers from search_results_list and send
+                                     if search_results_list and search_results_list.business_list:
+                                         st.write(f"(Will target top {k_int} from the {len(search_results_list.business_list)} search results)")
+                                         # Add actual sending logic here
+                                     else:
+                                          st.warning("Cannot apply 'k' limit as no search results are available.")
+                                except (ValueError, TypeError):
+                                    st.warning(f"Invalid value received for k ('{k_value}')")
+
+                            if target_numbers:
+                                st.write("**Target numbers (direct):**", target_numbers)
+                                # TODO: Implement logic to send to these specific numbers
+                                # Add actual sending logic here
+
+                            # Placeholder for actual sending function call
+                            # await send_whatsapp(message_content, k_value, target_numbers, search_results_list)
+
+
+                else: # No planned calls from LLM
                     st.info("LLM Response:")
-                    st.write(llm_response)
+                    st.write(llm_response if llm_response else "No specific action identified by the AI.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
