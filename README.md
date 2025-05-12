@@ -1,84 +1,166 @@
-# Google Maps Business Scraper Streamlit Web App
-  live : https://gmap-scraper-web-app-shakib-absar.streamlit.app/
+# Google Maps Business Scraper
 
-## Overview
-
-Google Maps Business Scraper is a Streamlit application designed to scrape business details from Google Maps based on a search term. It extracts `business names`, `addresses`, `websites`, `phone numbers`, and `average reviews`. <br>
-The scraped data is then saved in an Excel file for easy access and download.
+A Streamlit-based web application that scrapes business information from Google Maps using Playwright for browser automation.
 
 ## Features
 
-- **User Input**: Enter a search term and specify the number of results to scrape.  
-- **Progress Indicator**: A progress bar and elapsed time indicator to show the scraping process.
-- **Data Export**: Export the scraped data to an Excel file and download it directly from the app.
-- **Styled Interface**: Custom background color and personalized branding.
+- Search for businesses by location and type
+- Extract detailed business information including:
+  - Business name
+  - Address
+  - Website
+  - Phone number
+  - Reviews average rating
+- Export data to Excel format
+- User-friendly web interface
+- Real-time progress tracking
 
-## Installation
+## Workflow
 
-1. **Clone the Repository**
-    ```sh
-    git clone https://github.com/sabsar42/Google-Map-Scrapper-Streamlit.git
-    cd Google-Map-Scrapper-Streamlit
-    ```
+### 1. User Input Process
 
-2. **Create a Virtual Environment**
-    ```sh
-    python -m venv venv
-    ```
+The application accepts two main inputs from users:
 
-3. **Activate the Virtual Environment**
+1. **Search Term**
+   - Format: "Business Type in Location"
+   - Examples:
+     - "Coffee Shops in New York"
+     - "Restaurants in London"
+     - "Barber Shops in Tokyo"
+   - The search term is used to query Google Maps
 
-    - On Windows:
-        ```sh
-        venv\Scripts\activate
-        ```
-    - On macOS/Linux:
-        ```sh
-        source venv/bin/activate
-        ```
+2. **Number of Results**
+   - Range: 1-1000 businesses
+   - Default: 30 results
+   - Determines how many business listings to scrape
 
-4. **Install Required Packages**
-    ```sh
-    pip install -r requirements.txt
-    ```
+### 2. Data Collection Process
 
-## Usage
+When the user clicks "Get Data", the following process occurs:
 
-1. **Run the Streamlit App**
-    ```sh
-    streamlit run main_setVal.py
-    ```
+1. **Browser Initialization**
+   - Launches a headless Chrome browser using Playwright
+   - Navigates to Google Maps
 
-2. **Open the App in a Browser**
-    After running the command, Streamlit will display a URL in the terminal (usually `http://localhost:8501`). Open this URL in your browser.
+2. **Search Execution**
+   - Enters the search term in Google Maps search box
+   - Waits for results to load
+   - Scrolls through results to collect the specified number of listings
 
-3. **Enter Search Term and Number of Results**
-    - Enter the desired search term.
-    - Specify the number of results to scrape.
+3. **Data Extraction**
+   For each business listing, the scraper:
+   - Clicks on the listing to open details
+   - Extracts information using specific selectors:
+     - Name: `h1.DUwDvf.lfPIob`
+     - Address: `//button[@data-item-id="address"]//div[contains(@class, "fontBodyMedium")]`
+     - Website: `//a[@data-item-id="authority"]//div[contains(@class, "fontBodyMedium")]`
+     - Phone: `//button[contains(@data-item-id, "phone")]//div[contains(@class, "fontBodyMedium")]`
+     - Reviews: `//div[@jsaction="pane.reviewChart.moreReviews"]//div[@role="img"]`
 
-4. **Scrape and Download Data**
-    - Click on the **Get Data** button to start scraping.
-    - After completion, download the Excel file containing the scraped data.
+### 3. Data Processing
 
-## Code Structure
+1. **Data Structure**
+   - Each business is stored as a `Business` dataclass object
+   - Contains fields for name, address, website, phone, and reviews
+   - Objects are collected in a `BusinessList` container
 
-- **`main_setVal.py`**: Contains the main Streamlit application code along with the Scraper logic.
+2. **Data Transformation**
+   - Converts business objects to pandas DataFrame
+   - Handles missing data and formatting
 
-## Example
-    
-1. **Enter Search Term**: "Coffee Shops in New York, United States"
-2. **Specify Number of Results**: 100
-3. **Click `Get Data`**: The app scrapes data and displays progress.
-4. **Download Excel File**: Click the download button to get the results in .XLSX format ( Excel File ).
+### 4. Output Generation
 
-## Contributions
+1. **File Creation**
+   - Generates Excel file with naming convention:
+     `(Number_of_Rows)__DateTime__(Search_Term).xlsx`
+   - Example: `(30_Rows)__20240315_123456__(Coffee_Shops_New_York).xlsx`
 
-Contributions are welcome! Feel free to submit a pull request or open an issue.
+2. **User Interface Updates**
+   - Displays success message
+   - Shows download button for Excel file
+   - Presents data in interactive table
+   - Shows elapsed time
 
-## License
+## Technical Implementation
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+### Key Components
 
-## Author
+1. **Business Class**
+   ```python
+   @dataclass
+   class Business:
+       name: str = None
+       address: str = None
+       website: str = None
+       phone_number: str = None
+       reviews_average: float = None
+   ```
 
-Developed by Shakib Asbar.
+2. **BusinessList Class**
+   - Manages collection of Business objects
+   - Handles data export to Excel/CSV
+   - Provides DataFrame conversion
+
+3. **Scraping Function**
+   - Uses Playwright for browser automation
+   - Implements scrolling and pagination
+   - Handles dynamic content loading
+
+### Error Handling
+
+- Graceful handling of:
+  - Network issues
+  - Missing data
+  - Browser automation failures
+  - File saving errors
+
+## Setup and Installation
+
+1. **Prerequisites**
+   - Python 3.7+
+   - pip package manager
+
+2. **Installation**
+   ```bash
+   # Clone the repository
+   git clone [repository-url]
+
+   # Create virtual environment
+   python -m venv venv
+
+   # Activate virtual environment
+   # Windows
+   .\venv\Scripts\activate
+   # Linux/Mac
+   source venv/bin/activate
+
+   # Install dependencies
+   pip install -r requirements.txt
+
+   # Install Playwright browsers
+   playwright install
+   ```
+
+3. **Running the Application**
+   ```bash
+   streamlit run main_setVal.py
+   ```
+
+## Dependencies
+
+- streamlit: Web interface
+- playwright: Browser automation
+- pandas: Data manipulation
+- openpyxl: Excel file handling
+- python-dotenv: Environment variable management
+
+## Notes
+
+- The application requires an active internet connection
+- Google Maps may have rate limits or restrictions
+- Some businesses may have incomplete information
+- The scraping speed depends on network conditions and the number of results requested
+
+## Contributing
+
+Feel free to submit issues and enhancement requests!
