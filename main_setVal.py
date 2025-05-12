@@ -8,15 +8,73 @@ import logging
 from dataclasses import dataclass, asdict, field
 import datetime
 import time
-import os
-import asyncio
-from playwright.async_api import async_playwright
-import streamlit as st
-import pandas as pd
-import time
-import datetime
-import logging
-from dataclasses import dataclass, asdict, field
+import google.generativeai as genai
+from dotenv import load_dotenv
+import json
+
+# Load environment variables
+load_dotenv()
+API_KEY = os.getenv('GOOGLE_API_KEY')
+
+if not API_KEY:
+    st.error("Error: GOOGLE_API_KEY not found in environment variables.")
+    st.stop()
+
+genai.configure(api_key=API_KEY)
+
+# --- Define Tool Schemas (Functions the LLM can 'call') ---
+search_Maps_func = {
+    "name": "search_Maps",
+    "description": "Searches Google Maps for businesses based on a query.",
+    "parameters": {
+        # Use UPPERCASE type names
+        "type": "OBJECT",
+        "properties": {
+            "query": {
+                "type": "STRING", # Use UPPERCASE
+                "description": "The search term for Google Maps (e.g., 'cafes in islamabad', 'restaurants near Eiffel Tower'). Include the type of place and location.",
+            },
+            "num_results": {
+                "type": "INTEGER", # Use UPPERCASE
+                "description": "Optional. The desired approximate number of business results to find. Defaults to 20 if not specified.",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
+prepare_whatsapp_message_func = {
+    "name": "prepare_whatsapp_message",
+    "description": "Prepares the content and specifies the number of recipients for a WhatsApp message campaign.",
+    "parameters": {
+        # Use UPPERCASE type names
+        "type": "OBJECT",
+        "properties": {
+            "message": {
+                "type": "STRING", # Use UPPERCASE
+                "description": "The exact content of the WhatsApp message to be sent.",
+            },
+            "k": {
+                "type": "INTEGER", # Use UPPERCASE
+                "description": "Optional. The maximum number of recipients (leads) from the search results to send the message to.",
+            },
+            "target_numbers": {
+                "type": "ARRAY", # Use UPPERCASE
+                # The 'items' schema still defines the type of elements within the array
+                "items": {"type": "STRING"}, # Keep nested type as STRING
+                "description": "Optional. A specific list of phone numbers to send the message to.",
+            }
+        },
+        "required": ["message"],
+    },
+}
+
+# Initialize the LLM Model with the corrected Tools
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash-latest",
+    tools=[search_Maps_func, prepare_whatsapp_message_func] # Pass the corrected dictionaries
+)
+
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -254,76 +312,110 @@ async def scrape_business(search_term, total):
             return BusinessList()
 
 
+async def get_agent_plan(user_input: str):
+    """Processes user input using the LLM to determine intent and extract parameters."""
+    planned_calls = []
+    try:
+        chat = model.start_chat()
+        prompt = f"""Analyze the following user request for lead generation. Determine the required actions (search Google Maps, send WhatsApp message, or both). Extract all necessary parameters for the corresponding functions.
+
+        User Request: "{user_input}"
+
+        Based on the request, identify the function(s) to call and the arguments for each. If the user wants to send a message based on search results, first call 'search_Maps' and then 'prepare_whatsapp_message'. If they only want to send a message to specific numbers, only call 'prepare_whatsapp_message' with the 'target_numbers'. If they only want to search, only call 'search_Maps'.
+        """
+        response = chat.send_message(prompt)
+
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if part.function_call:
+                    call = part.function_call
+                    function_name = call.name
+                    args = {key: value for key, value in call.args.items()}
+
+                    if function_name == "search_Maps" and "num_results" not in args:
+                        args["num_results"] = 20
+
+                    planned_calls.append({
+                        "function_name": function_name,
+                        "args": args
+                    })
+
+        return planned_calls, response.text
+
+    except Exception as e:
+        st.error(f"An error occurred during LLM interaction: {e}")
+        return [], str(e)
+
 async def main():
-    st.title("Google Maps Business Scraper")
+    st.title("AI-Powered Lead Generation Assistant")
 
     st.text("By Shakib Absar")
     st.markdown("---")
 
     st.markdown(
         """
-    <p style="font-size: 13px;color: aqua;">Enter search term  ( e.g. Coffee Shops in New York, United States  /  Restaurants in Sylhet, Bangladesh  ) for more accurate results</p>
+    <p style="font-size: 13px;color: aqua;">Enter your request in natural language. Examples:</p>
+    <ul>
+        <li>"Find cafes in Islamabad and send the first 5 this message: 'Hello! We have a special offer today.'"</li>
+        <li>"Show me barber shops in Malakand, maybe 10 of them."</li>
+        <li>"Send 'Meeting reminder for tomorrow at 10 AM' to +923001234567 and +923339876543"</li>
+    </ul>
     """,
         unsafe_allow_html=True,
     )
-    search_term = st.text_input(
-        "Enter search term",
-        placeholder="e.g. Barber Shops in London United Kingdom")
 
-    total_results = st.number_input("Enter number of results",
-                                    min_value=1,
-                                    max_value=1000,
-                                    value=30)
+    user_input = st.text_area(
+        "Enter your request",
+        placeholder="e.g., Find cafes in Islamabad and send them a promotional message"
+    )
 
-    if st.button("Get Data"):
-        if not search_term:
-            st.error("Please enter a search term")
+    if st.button("Process Request"):
+        if not user_input:
+            st.error("Please enter your request")
         else:
-
-            with st.spinner("Fetching data..."):
-                start_time = time.time()
-                business_list = await scrape_business(search_term,
-                                                      total_results)
-                elapsed_time = time.time() - start_time
-
-                current_datetime = datetime.datetime.now().strftime(
-                    "%Y%m%d_%H%M%S")
-                search_for_filename = search_term.replace(' ', '_')
-
-                row_size = business_list.get_row_size()
-
-                excel_filename = f"({row_size}_Rows)__{current_datetime}__({search_for_filename})"
-
-                # Save to Excel and get the file path
-                excel_file_path = business_list.save_to_excel(excel_filename)
-
-                if excel_file_path:
-
-                    st.success("Fetched completed!")
-
-                    download_container = st.container()
-
-                    with download_container:
-                        st.markdown(
-                            ""
-                        )  # Add some space above the button for better separation
-                        st.download_button(label="Download Excel File",
-                                           data=open(excel_file_path,
-                                                     'rb').read(),
-                                           file_name=f"{excel_filename}.xlsx",
-                                           mime="application/octet-stream")
-
+            with st.spinner("Analyzing your request..."):
+                planned_calls, llm_response = await get_agent_plan(user_input)
+                
+                if planned_calls:
+                    st.success("Request analyzed successfully!")
+                    st.json(planned_calls)
+                    
+                    # Process each planned call
+                    for call in planned_calls:
+                        if call["function_name"] == "search_Maps":
+                            with st.spinner("Searching Google Maps..."):
+                                business_list = await scrape_business(
+                                    call["args"]["query"],
+                                    call["args"].get("num_results", 20)
+                                )
+                                
+                                if business_list.business_list:
+                                    st.success(f"Found {len(business_list.business_list)} results!")
+                                    st.dataframe(business_list.dataframe())
+                                    
+                                    # Save results
+                                    current_datetime = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    search_for_filename = call["args"]["query"].replace(' ', '_')
+                                    excel_filename = f"({len(business_list.business_list)}_Rows)__{current_datetime}__({search_for_filename})"
+                                    
+                                    excel_file_path = business_list.save_to_excel(excel_filename)
+                                    if excel_file_path:
+                                        st.download_button(
+                                            label="Download Results",
+                                            data=open(excel_file_path, 'rb').read(),
+                                            file_name=f"{excel_filename}.xlsx",
+                                            mime="application/octet-stream"
+                                        )
+                        elif call["function_name"] == "prepare_whatsapp_message":
+                            st.info("WhatsApp Message Prepared:")
+                            st.write(f"Message: {call['args']['message']}")
+                            if "k" in call["args"]:
+                                st.write(f"Number of recipients: {call['args']['k']}")
+                            if "target_numbers" in call["args"]:
+                                st.write("Target numbers:", call["args"]["target_numbers"])
                 else:
-                    st.warning(
-                        "No file to download. Please make sure to run the scraper first."
-                    )
-
-                st.markdown(f"**File Name:** `{excel_filename}.xlsx`")
-                st.dataframe(business_list.dataframe())
-                st.markdown("---")
-                st.text(f"Elapsed Time: {elapsed_time:.2f} seconds")
-                st.markdown("---")
-
+                    st.info("LLM Response:")
+                    st.write(llm_response)
 
 if __name__ == "__main__":
     asyncio.run(main())
