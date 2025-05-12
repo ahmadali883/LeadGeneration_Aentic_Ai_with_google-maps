@@ -314,21 +314,39 @@ async def scrape_business(search_term, total):
 async def get_agent_plan(user_input: str):
     """
     Processes user input using the LLM to determine intent and extract parameters.
-    Handles both function calls and text responses safely.
+    Handles both function calls and text responses safely. Interprets indirect queries.
     """
     planned_calls = []
     llm_text_output = ""  # To store any textual response from the LLM
 
     try:
         chat = model.start_chat()
-        prompt = f"""Analyze the following user request for lead generation. Determine the required actions (search Google Maps, send WhatsApp message, or both). Extract all necessary parameters for the corresponding functions.
+        # --- Updated Prompt ---
+        prompt = f"""Analyze the following user request for lead generation using the available tools: 'search_Maps' and 'prepare_whatsapp_message'.
 
-        User Request: "{user_input}"
+        **CRITICAL TASK:** Interpret the user's request to identify the **type of business or place** they are actually looking for on Google Maps, especially when they use terms like 'clients' or 'leads'. Formulate the most effective search query for the 'search_Maps' tool.
 
-        Based on the request, identify the function(s) to call and the arguments for each. If the user wants to send a message based on search results, first call 'search_Maps' and then 'prepare_whatsapp_message'. If they only want to send a message to specific numbers, only call 'prepare_whatsapp_message' with the 'target_numbers'. If they only want to search, only call 'search_Maps'.
+        **Interpretation Examples:**
+        - User: "find me graphic design clients in New York" -> Your interpretation: The user wants businesses that *are* graphic designers or *hire* them. -> **Search Query:** "graphic designers in New York" OR "graphic design agency in New York"
+        - User: "look for companies needing marketing services in London" -> Your interpretation: The user wants potential clients for marketing. -> **Search Query:** "marketing agency in London" OR "businesses in London" (less specific, might need clarification)
+        - User: "get me plumbing leads in Chicago" -> Your interpretation: The user wants plumbing businesses. -> **Search Query:** "plumbers in Chicago" OR "plumbing companies in Chicago"
+        - User: "find cafes in Islamabad and send message X" -> Your interpretation: Direct request. -> **Search Query:** "cafes in Islamabad"
+
+        **User Request:** "{user_input}"
+
+        **Your Steps:**
+        1.  Carefully analyze the User Request.
+        2.  Determine the core action(s): Search Maps, Prepare WhatsApp message, or Both.
+        3.  **If searching:** Formulate the best possible `query` string for Google Maps based on your interpretation (as shown in examples) and identify the `location`. Determine `num_results` (default 20 if unspecified).
+        4.  **If messaging:** Extract the `message` content, the limit `k`, or specific `target_numbers`.
+        5.  Identify the correct function(s) ('search_Maps', 'prepare_whatsapp_message') to call and construct their arguments precisely.
+        6.  If the plan involves searching and then messaging those results, ensure 'search_Maps' is called first.
         """
+        # --- End of Updated Prompt ---
+
         response = chat.send_message(prompt)
 
+        # (Rest of the function to parse response remains the same...)
         # Iterate through the parts of the response candidate
         if response.candidates and response.candidates[0].content.parts:
             for part in response.candidates[0].content.parts:
@@ -336,12 +354,10 @@ async def get_agent_plan(user_input: str):
                 if part.function_call:
                     call = part.function_call
                     function_name = call.name
-                    # Ensure args is always a dict, even if empty
                     args = {key: value for key, value in call.args.items()} if hasattr(call, 'args') else {}
 
-                    # Apply default values if necessary based on function name
                     if function_name == "search_Maps" and "num_results" not in args:
-                        args["num_results"] = 20  # Default search results
+                        args["num_results"] = 20
 
                     planned_calls.append({
                         "function_name": function_name,
@@ -349,29 +365,23 @@ async def get_agent_plan(user_input: str):
                     })
                 # --- If not a function call, check for text ---
                 elif hasattr(part, 'text'):
-                    llm_text_output += part.text + "\n" # Accumulate text parts
+                    llm_text_output += part.text + "\n"
 
-        # --- Fallback: If no parts were processed, try response.text (might error) ---
         if not planned_calls and not llm_text_output:
             try:
-                # This might raise an error if the response *only* contained a function call
-                # but somehow wasn't processed above.
                 llm_text_output = response.text
             except ValueError as ve:
-                # Handle the specific error if .text is accessed on a function call response
                 llm_text_output = f"LLM response contained a function call but no text. ({ve})"
             except Exception as text_exc:
                  llm_text_output = f"Could not extract text response: {text_exc}"
 
     except Exception as e:
-        # Format a more informative error message for the top-level exception
         error_message = f"An error occurred during LLM interaction: {type(e).__name__} - {str(e)}"
         st.error(error_message)
-        # Return the error message as the text response part of the tuple
         return [], error_message
 
-    # Return the extracted plan and any text output (strip extra whitespace)
     return planned_calls, llm_text_output.strip()
+
 
 async def main():
     st.title("AI-Powered Lead Generation Assistant")
