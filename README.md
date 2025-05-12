@@ -1,166 +1,172 @@
-# Google Maps Business Scraper
+# Google Maps Scraper with WhatsApp Automation
 
-A Streamlit-based web application that scrapes business information from Google Maps using Playwright for browser automation.
+A powerful Streamlit web application that combines Google Maps business data scraping with automated WhatsApp messaging capabilities. This tool helps businesses and marketers find potential leads and engage with them through WhatsApp.
 
-## Features
+## 🌟 Features
 
-- Search for businesses by location and type
-- Extract detailed business information including:
-  - Business name
-  - Address
-  - Website
-  - Phone number
-  - Reviews average rating
-- Export data to Excel format
-- User-friendly web interface
-- Real-time progress tracking
+- **Google Maps Scraping**
+  - Search for businesses based on location and type
+  - Extract business details including:
+    - Business name
+    - Address
+    - Phone numbers
+    - Website
+    - Reviews and ratings
+  - Export data to Excel/CSV formats
 
-## Workflow
+- **WhatsApp Automation**
+  - Send messages to multiple contacts
+  - Support for bulk messaging
+  - Automatic phone number formatting
+  - Message delivery status tracking
+  - Rate limiting to prevent blocking
 
-### 1. User Input Process
+- **AI-Powered Interface**
+  - Natural language processing for search queries
+  - Smart message preparation
+  - Intelligent lead selection
+  - User-friendly Streamlit interface
 
-The application accepts two main inputs from users:
+## 🚀 Getting Started
 
-1. **Search Term**
-   - Format: "Business Type in Location"
-   - Examples:
-     - "Coffee Shops in New York"
-     - "Restaurants in London"
-     - "Barber Shops in Tokyo"
-   - The search term is used to query Google Maps
+### Prerequisites
 
-2. **Number of Results**
-   - Range: 1-1000 businesses
-   - Default: 30 results
-   - Determines how many business listings to scrape
+- Python 3.8 or higher
+- WhatsApp Web/Desktop installed and logged in
+- Google API Key (for Gemini AI features)
 
-### 2. Data Collection Process
+### Installation
 
-When the user clicks "Get Data", the following process occurs:
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/Google-Map-Scrapper-Streamlit-Web.git
+cd Google-Map-Scrapper-Streamlit-Web
+```
 
-1. **Browser Initialization**
-   - Launches a headless Chrome browser using Playwright
-   - Navigates to Google Maps
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+# On Windows
+venv\Scripts\activate
+# On Unix or MacOS
+source venv/bin/activate
+```
 
-2. **Search Execution**
-   - Enters the search term in Google Maps search box
-   - Waits for results to load
-   - Scrolls through results to collect the specified number of listings
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-3. **Data Extraction**
-   For each business listing, the scraper:
-   - Clicks on the listing to open details
-   - Extracts information using specific selectors:
-     - Name: `h1.DUwDvf.lfPIob`
-     - Address: `//button[@data-item-id="address"]//div[contains(@class, "fontBodyMedium")]`
-     - Website: `//a[@data-item-id="authority"]//div[contains(@class, "fontBodyMedium")]`
-     - Phone: `//button[contains(@data-item-id, "phone")]//div[contains(@class, "fontBodyMedium")]`
-     - Reviews: `//div[@jsaction="pane.reviewChart.moreReviews"]//div[@role="img"]`
+4. Install Playwright browsers:
+```bash
+playwright install
+```
 
-### 3. Data Processing
+5. Create a `.env` file in the project root and add your Google API key:
+```
+GOOGLE_API_KEY=your_api_key_here
+```
 
-1. **Data Structure**
-   - Each business is stored as a `Business` dataclass object
-   - Contains fields for name, address, website, phone, and reviews
-   - Objects are collected in a `BusinessList` container
+### Running the Application
 
-2. **Data Transformation**
-   - Converts business objects to pandas DataFrame
-   - Handles missing data and formatting
+1. Start the Streamlit app:
+```bash
+streamlit run main_setVal.py
+```
 
-### 4. Output Generation
+2. Open your browser and navigate to the provided local URL (typically http://localhost:8501)
 
-1. **File Creation**
-   - Generates Excel file with naming convention:
-     `(Number_of_Rows)__DateTime__(Search_Term).xlsx`
-   - Example: `(30_Rows)__20240315_123456__(Coffee_Shops_New_York).xlsx`
+## 💡 Usage
 
-2. **User Interface Updates**
-   - Displays success message
-   - Shows download button for Excel file
-   - Presents data in interactive table
-   - Shows elapsed time
+### Searching for Businesses
 
-## Technical Implementation
+1. Enter your search query in natural language (e.g., "Find cafes in Islamabad")
+2. Specify the number of results you want
+3. View the results in the interactive table
+4. Download the data in Excel or CSV format
 
-### Key Components
+### Sending WhatsApp Messages
 
-1. **Business Class**
-   ```python
-   @dataclass
-   class Business:
-       name: str = None
-       address: str = None
-       website: str = None
-       phone_number: str = None
-       reviews_average: float = None
-   ```
+1. Prepare your message content
+2. Choose recipients:
+   - Direct phone numbers
+   - Results from a search
+   - Specific number of leads from search results
+3. Ensure WhatsApp Web is open and logged in
+4. Send messages and monitor delivery status
 
-2. **BusinessList Class**
-   - Manages collection of Business objects
-   - Handles data export to Excel/CSV
-   - Provides DataFrame conversion
+## ⚙️ Configuration
 
-3. **Scraping Function**
-   - Uses Playwright for browser automation
-   - Implements scrolling and pagination
-   - Handles dynamic content loading
+The application can be configured through various parameters:
 
-### Error Handling
+- `MESSAGE_INTERVAL`: Delay between messages (default: 15 seconds)
+- `PYWHATKIT_WAIT_TIME`: Wait time for WhatsApp Web (default: 25 seconds)
+- `MAX_RETRIES`: Maximum retry attempts for failed messages
+- `DEFAULT_COUNTRY_CODE`: Default country code for phone numbers
 
-- Graceful handling of:
-  - Network issues
-  - Missing data
-  - Browser automation failures
-  - File saving errors
+## 🔒 Security and Privacy
 
-## Setup and Installation
+- API keys are stored in environment variables
+- Phone numbers are validated and formatted securely
+- Rate limiting prevents abuse
+- No data is stored permanently
 
-1. **Prerequisites**
-   - Python 3.7+
-   - pip package manager
+## 🛠️ Technical Details
 
-2. **Installation**
-   ```bash
-   # Clone the repository
-   git clone [repository-url]
+### Key Technologies
 
-   # Create virtual environment
-   python -m venv venv
+- **Streamlit**: Web interface
+- **Playwright**: Browser automation
+- **Pandas**: Data handling
+- **Google Gemini AI**: Natural language processing
+- **PyWhatKit**: WhatsApp automation
+- **Python-dotenv**: Environment management
 
-   # Activate virtual environment
-   # Windows
-   .\venv\Scripts\activate
-   # Linux/Mac
-   source venv/bin/activate
+### Project Structure
 
-   # Install dependencies
-   pip install -r requirements.txt
+```
+├── main_setVal.py          # Main application file
+├── requirements.txt        # Python dependencies
+├── packages.txt           # System dependencies
+├── .env                   # Environment variables
+├── output/               # Exported data directory
+└── venv/                 # Virtual environment
+```
 
-   # Install Playwright browsers
-   playwright install
-   ```
+## 🤝 Contributing
 
-3. **Running the Application**
-   ```bash
-   streamlit run main_setVal.py
-   ```
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## Dependencies
+## ⚠️ Important Notes
 
-- streamlit: Web interface
-- playwright: Browser automation
-- pandas: Data manipulation
-- openpyxl: Excel file handling
-- python-dotenv: Environment variable management
+- Always ensure WhatsApp Web is open and logged in before sending messages
+- Respect WhatsApp's terms of service and rate limits
+- Use the tool responsibly and ethically
+- Keep your API keys secure
 
-## Notes
+## 📝 License
 
-- The application requires an active internet connection
-- Google Maps may have rate limits or restrictions
-- Some businesses may have incomplete information
-- The scraping speed depends on network conditions and the number of results requested
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Contributing
+## 👥 Authors
 
-Feel free to submit issues and enhancement requests!
+- **Shakib Absar** - *Initial work*
+
+## 🙏 Acknowledgments
+
+- Google Maps API
+- WhatsApp Web
+- Streamlit community
+- All contributors and users
+
+## 📞 Support
+
+For support, please open an issue in the GitHub repository or contact the maintainers.
+
+---
+
+Made with ❤️ by Shakib Absar
