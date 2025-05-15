@@ -11,6 +11,7 @@ import time
 import google.generativeai as genai
 from dotenv import load_dotenv
 import json
+import pywhatkit
 
 # Load environment variables
 load_dotenv()
@@ -480,31 +481,86 @@ async def main():
 
                             st.write(f"**Message:** {message_content}")
 
-                            if k_value is not None:
-                                try:
-                                     k_int = int(k_value)
-                                     st.write(f"**Number of recipients (k):** {k_int}")
-                                     # TODO: Implement logic to get numbers from search_results_list and send
-                                     if search_results_list and search_results_list.business_list:
-                                         st.write(f"(Will target top {k_int} from the {len(search_results_list.business_list)} search results)")
-                                         # Add actual sending logic here
-                                     else:
-                                          st.warning("Cannot apply 'k' limit as no search results are available.")
-                                except (ValueError, TypeError):
-                                    st.warning(f"Invalid value received for k ('{k_value}')")
-
+                            # Handle direct target numbers if provided
                             if target_numbers:
                                 st.write("**Target numbers (direct):**", target_numbers)
-                                # TODO: Implement logic to send to these specific numbers
-                                # Add actual sending logic here
+                                with st.spinner("Sending messages to direct numbers..."):
+                                    for number in target_numbers:
+                                        if await send_whatsapp_message(number, message_content):
+                                            st.success(f"Message sent to {number}")
+                                        else:
+                                            st.error(f"Failed to send message to {number}")
 
-                            # Placeholder for actual sending function call
-                            # await send_whatsapp(message_content, k_value, target_numbers, search_results_list)
+                            # Handle search results if available
+                            elif search_results_list and search_results_list.business_list:
+                                if k_value is not None:
+                                    try:
+                                        k_int = int(k_value)
+                                        st.write(f"**Number of recipients (k):** {k_int}")
+                                        
+                                        # Get phone numbers from search results
+                                        phone_numbers = [
+                                            business.phone_number 
+                                            for business in search_results_list.business_list[:k_int]
+                                            if business.phone_number  # Only include if phone number exists
+                                        ]
+                                        
+                                        if not phone_numbers:
+                                            st.warning("No valid phone numbers found in the search results.")
+                                        else:
+                                            with st.spinner(f"Sending messages to {len(phone_numbers)} recipients..."):
+                                                for number in phone_numbers:
+                                                    if await send_whatsapp_message(number, message_content):
+                                                        st.success(f"Message sent to {number}")
+                                                    else:
+                                                        st.error(f"Failed to send message to {number}")
+                                        
+                                    except (ValueError, TypeError):
+                                        st.warning(f"Invalid value received for k ('{k_value}')")
+                                else:
+                                    st.warning("No 'k' value provided to limit the number of recipients.")
+                            else:
+                                st.warning("No search results available to send messages to.")
 
 
                 else: # No planned calls from LLM
                     st.info("LLM Response:")
                     st.write(llm_response if llm_response else "No specific action identified by the AI.")
+
+
+async def send_whatsapp_message(phone_number: str, message: str, wait_time: int = 25) -> bool:
+    """
+    Sends a WhatsApp message using pywhatkit.
+    
+    Args:
+        phone_number: The target phone number in international format (e.g., +923348958772)
+        message: The message content to send
+        wait_time: How long to wait for WhatsApp Web to load (default: 25 seconds)
+    
+    Returns:
+        bool: True if message was sent successfully, False otherwise
+    """
+    try:
+        logging.info(f"Attempting to send WhatsApp message to: {phone_number}")
+        logging.info(f"Message: {message}")
+        logging.info(f"Waiting {wait_time} seconds for WhatsApp Web/Desktop...")
+        
+        pywhatkit.sendwhatmsg_instantly(
+            phone_no=phone_number,
+            message=message,
+            wait_time=wait_time,
+            tab_close=True,
+            close_time=3
+        )
+        
+        logging.info("Message sent successfully!")
+        return True
+        
+    except Exception as e:
+        error_type = type(e).__name__
+        logging.error(f"An error occurred: {error_type} - {e}")
+        st.error(f"Failed to send message to {phone_number}. Error: {error_type}")
+        return False
 
 
 if __name__ == "__main__":
