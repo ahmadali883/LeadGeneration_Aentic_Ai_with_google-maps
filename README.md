@@ -174,8 +174,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👥 Authors
 
-- **Shakib Absar** - *Initial work*
-
+- **Shakib Absar** - *Google Maps Web Scraping*
+- **Ahmad Ali** - *Implementation of Agent and Lead Generation*
 ## 🙏 Acknowledgments
 
 - Google Maps API
@@ -190,4 +190,5 @@ For support, please open an issue in the GitHub repository or contact the mainta
 
 ---
 
-Made with ❤️ by Shakib Absar
+Made with ❤️ by Ahmad Ali 
+Starter Code of Google Maps Scraping ❤️ by Shakib Absar
